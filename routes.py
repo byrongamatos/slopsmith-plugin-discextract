@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 _get_dlc_dir = None
 _extract_meta = None
 _meta_db = None
+_log = logging.getLogger("slopsmith.plugin.discextract")
 
 
 def _find_rs_dir(dlc_dir):
@@ -302,11 +304,10 @@ def setup(app, context):
                 })
 
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                _log.exception("Extraction failed")
                 progress_queue.put_nowait({"error": str(e)})
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         task = loop.run_in_executor(None, _do_extract)
 
         try:

@@ -11,6 +11,7 @@ Usage:
 import argparse
 import fnmatch
 import json
+import logging
 import re
 import struct
 import sys
@@ -21,6 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from psarc import _parse_toc, _extract_entry
 from patcher import pack_psarc
+
+log = logging.getLogger("slopsmith.plugin.discextract")
 
 RS_DIR = Path.home() / ".local/share/Steam/steamapps/common/Rocksmith2014"
 DLC_DIR = RS_DIR / "dlc"
@@ -250,7 +253,7 @@ def process_songs(reader, output_dir, filter_keys=None):
         filter_set = {k.lower() for k in filter_keys}
         song_keys = [(k, p, f) for k, p, f in song_keys if k in filter_set]
 
-    print(f"  Found {len(song_keys)} songs")
+    log.info("Found %d songs", len(song_keys))
 
     # Load shared resources
     flat_root = reader.get("flatmodels/rs/rsenumerable_root.flat")
@@ -275,7 +278,7 @@ def process_songs(reader, output_dir, filter_keys=None):
         xblock_data = reader.get(xblock_path)
 
         if not manifests:
-            print(f"  [{i+1}/{len(song_keys)}] {key}: no manifests found, skipping")
+            log.warning("[%d/%d] %s: no manifests found, skipping", i + 1, len(song_keys), key)
             continue
 
         # Get song info from first non-vocals manifest
@@ -294,7 +297,7 @@ def process_songs(reader, output_dir, filter_keys=None):
         # Skip if already extracted
         if (output_dir / out_name).exists():
             extracted += 1
-            print(f"  [{i+1}/{len(song_keys)}] {info['artist']} - {info['title']} (already exists)")
+            log.debug("[%d/%d] %s - %s (already exists)", i + 1, len(song_keys), info["artist"], info["title"])
             continue
 
         # Get audio (self-contained in songs.psarc)
@@ -304,7 +307,7 @@ def process_songs(reader, output_dir, filter_keys=None):
         preview_bnk = reader.get(preview_bnk_name)
 
         if not song_bnk:
-            print(f"  [{i+1}/{len(song_keys)}] {key}: no song BNK found, skipping")
+            log.warning("[%d/%d] %s: no song BNK found, skipping", i + 1, len(song_keys), key)
             continue
 
         # Parse BNK to find WEM IDs
@@ -326,7 +329,7 @@ def process_songs(reader, output_dir, filter_keys=None):
                 wem_files[wem_name] = wem_data
 
         if not wem_files:
-            print(f"  [{i+1}/{len(song_keys)}] {key}: no WEM audio found, skipping")
+            log.warning("[%d/%d] %s: no WEM audio found, skipping", i + 1, len(song_keys), key)
             continue
 
         # Build the standalone PSARC structure in a temp directory
@@ -418,9 +421,9 @@ def process_songs(reader, output_dir, filter_keys=None):
             extracted += 1
 
             arrangements = len(sngs)
-            print(
-                f"  [{i+1}/{len(song_keys)}] {info['artist']} - {info['title']} "
-                f"({arrangements} arr) -> {out_name}"
+            log.info(
+                "[%d/%d] %s - %s (%d arr) -> %s",
+                i + 1, len(song_keys), info["artist"], info["title"], arrangements, out_name,
             )
 
     reader.close()
@@ -448,18 +451,17 @@ def main():
         filter_keys = [k.strip().lower() for k in args.songs.split(",")]
 
     if not SONGS_PSARC.exists():
-        print(f"songs.psarc not found at {SONGS_PSARC}")
+        log.error("songs.psarc not found at %s", SONGS_PSARC)
         sys.exit(1)
 
-    print(f"Opening {SONGS_PSARC.name}...")
+    log.info("Opening %s...", SONGS_PSARC.name)
     reader = PsarcReader(SONGS_PSARC)
 
-    print(f"\n{'='*60}")
-    print("Extracting base game songs from songs.psarc")
-    print(f"{'='*60}")
+    log.info("Extracting base game songs from songs.psarc")
     count = process_songs(reader, args.output, filter_keys)
-    print(f"\nDone! {count} songs extracted to {args.output}")
+    log.info("Done! %d songs extracted to %s", count, args.output)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     main()
